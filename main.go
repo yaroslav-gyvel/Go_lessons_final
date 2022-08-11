@@ -10,11 +10,16 @@ import (
 	"reflect"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 )
 
 const filename string = "./data.json"
-const timeLayout string = "15:04:05"
+const hhmmss string = "15:04:05"
+const resultCounter int = 3
+const sortPrice string = "price"
+const sortDepTime string = "departure-time"
+const sortArrTime string = "arrival-time"
 
 var emptyDepStationErr = errors.New("empty departure station")
 var emptyArrStationErr = errors.New("empty arrival station")
@@ -43,56 +48,59 @@ type Train struct {
 	DepartureTime      time.Time
 }
 
-func (t Train) IsEmpty() bool {
-	return reflect.DeepEqual(t, Train{})
-}
-
 type queryParam struct {
-	dep, arr int
-	sort     string
+	departureStation, arrivalStation int
+	sorting                          string
 }
 
-func (qp *queryParam) validateInput(depStation, arrStation, criteria string) error {
+func (q queryParam) IsEmpty() bool {
+	return reflect.DeepEqual(q, queryParam{departureStation: 0, arrivalStation: 0, sorting: ""})
+}
+
+func validateInput(depStation, arrStation, criteria string, qp queryParam) (queryParam, error) {
+
 	if depStation == "" {
-		return emptyDepStationErr
+		return qp, emptyDepStationErr
 	}
+
 	depID, err := strconv.Atoi(depStation)
 	if err != nil {
-		return badDepStationErr
+		return qp, badDepStationErr
 	}
-	qp.dep = depID
+	qp.departureStation = depID
 
 	if arrStation == "" {
-		return emptyArrStationErr
+		return qp, emptyArrStationErr
 	}
+
 	arrID, err := strconv.Atoi(arrStation)
 	if err != nil {
-		return badArrStationErr
+		return qp, badArrStationErr
 	}
-	qp.arr = arrID
+	qp.arrivalStation = arrID
 
 	switch criteria {
-	case "price", "arrival-time", "departure-time":
-		qp.sort = criteria
+	case sortPrice, sortArrTime, sortDepTime:
+		qp.sorting = criteria
 	default:
-		return unsuportCriteriaErr
+		return qp, unsuportCriteriaErr
 	}
 
-	return nil
+	return qp, nil
 }
 
 func parseJSON() (Trains, error) {
 	jsonFile, err := os.Open(filename)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to open '%s' file in OS: %w", filename, err)
 	}
 
-	defer func(jsonFile *os.File) (err error) {
+	defer func(jsonFile *os.File) {
 		err = jsonFile.Close()
 		if err != nil {
-			return err
+			fmt.Printf("json file is not closed, error: %v", err)
+			return
 		}
-		return nil
 	}(jsonFile)
 
 	decoder := json.NewDecoder(jsonFile)
@@ -103,86 +111,99 @@ func parseJSON() (Trains, error) {
 		var sliceAny []interface{}
 		var train Train
 
-		if err := decoder.Decode(&sliceAny); err == io.EOF {
+		err := decoder.Decode(&sliceAny)
+		if err == io.EOF {
 			break
-		} else if err != nil {
+		}
+		if err != nil {
 			return nil, err
 		}
 
 		for i := range sliceAny {
 			jsVal, ok := sliceAny[i].(map[string]interface{})
-			if ok {
-				trainID, ok := jsVal["trainId"].(float64)
-				if ok {
-					train.TrainID = int(trainID)
-				}
-				depStationID, ok := jsVal["departureStationId"].(float64)
-				if ok {
-					train.DepartureStationID = int(depStationID)
-				}
-				arrStationID, ok := jsVal["arrivalStationId"].(float64)
-				if ok {
-					train.ArrivalStationID = int(arrStationID)
-				}
-				price, ok := jsVal["price"].(float64)
-				if ok {
-					train.Price = float32(price)
-				}
-				timeArr, ok := jsVal["arrivalTime"].(string)
-				if ok {
-					tArr, err := time.Parse(timeLayout, timeArr)
-					if err != nil {
-						return nil, err
-					}
-					train.ArrivalTime = tArr
-				}
-				timeDep, ok := jsVal["departureTime"].(string)
-				if ok {
-					tDep, err := time.Parse(timeLayout, timeDep)
-					if err != nil {
-						return nil, err
-					}
-					train.DepartureTime = tDep
-				}
-
-				trains = append(trains, train)
-
+			if !ok {
+				return nil, fmt.Errorf("failed casting json file '%s' file in OS: %w", filename, err)
 			}
+
+			trainID, ok := jsVal["trainId"].(float64)
+			if !ok {
+				return nil, fmt.Errorf("failed casting value trainID: %w", err)
+			}
+			train.TrainID = int(trainID)
+
+			depStationID, ok := jsVal["departureStationId"].(float64)
+			if !ok {
+				return nil, fmt.Errorf("failed casting value depStationID: %w", err)
+			}
+			train.DepartureStationID = int(depStationID)
+
+			arrStationID, ok := jsVal["arrivalStationId"].(float64)
+			if !ok {
+				return nil, fmt.Errorf("failed casting value arrStationID: %w", err)
+			}
+			train.ArrivalStationID = int(arrStationID)
+
+			price, ok := jsVal["price"].(float64)
+			if !ok {
+				return nil, fmt.Errorf("failed casting value price: %w", err)
+			}
+			train.Price = float32(price)
+
+			timeArr, ok := jsVal["arrivalTime"].(string)
+			if !ok {
+				return nil, fmt.Errorf("failed casting value arrivalTime: %w", err)
+			}
+			tArr, err := time.Parse(hhmmss, timeArr)
+			if err != nil {
+				return nil, fmt.Errorf("failed parsing value arrivalTime: %w", err)
+			}
+			train.ArrivalTime = tArr
+
+			timeDep, ok := jsVal["departureTime"].(string)
+			if !ok {
+				return nil, fmt.Errorf("failed casting value departureTime: %w", err)
+			}
+			tDep, err := time.Parse(hhmmss, timeDep)
+			if err != nil {
+				return nil, fmt.Errorf("failed parsing value departureTime: %w", err)
+			}
+			train.DepartureTime = tDep
+
+			trains = append(trains, train)
 
 		}
 	}
+
 	return trains, nil
 }
 
 func main() {
-
 	var depStation string
 	var arrStation string
 	var criteria string
-
 	// ... запит даних від користувача
-	scanner := bufio.NewScanner(os.Stdin)
+	reader := bufio.NewReader(os.Stdin)
 
 	fmt.Println("Enter the number of the departure station: ")
-	scanner.Scan()
-	if err := scanner.Err(); err != nil {
-		fmt.Fprintln(os.Stderr, "reading input:", err)
+	input, err := reader.ReadString('\n')
+	if err != nil {
+		fmt.Printf("input error: %s\n", err)
 	}
-	depStation = scanner.Text()
+	depStation = strings.Replace(input, "\r\n", "", -1)
 
 	fmt.Println("Enter the arrival station number: ")
-	scanner.Scan()
-	if err := scanner.Err(); err != nil {
-		fmt.Fprintln(os.Stderr, "reading input:", err)
+	input, err = reader.ReadString('\n')
+	if err != nil {
+		fmt.Printf("input error: %s\n", err)
 	}
-	arrStation = scanner.Text()
+	arrStation = strings.Replace(input, "\r\n", "", -1)
 
 	fmt.Println("Specify the search criteria (price,arrival-time,departure-time): ")
-	scanner.Scan()
-	if err := scanner.Err(); err != nil {
-		fmt.Fprintln(os.Stderr, "reading input:", err)
+	input, err = reader.ReadString('\n')
+	if err != nil {
+		fmt.Printf("input error: %s\n", err)
 	}
-	criteria = scanner.Text()
+	criteria = strings.Replace(input, "\r\n", "", -1)
 
 	result, err := FindTrains(depStation, arrStation, criteria)
 
@@ -223,45 +244,42 @@ func main() {
 }
 
 func FindTrains(depStation, arrStation, criteria string) (Trains, error) {
-	// ... код
-	var qp = queryParam{0, 0, ""}
 	var searchedTrains Trains
 	var result Trains
 
-	if err := qp.validateInput(depStation, arrStation, criteria); err != nil {
-		return nil, err
+	qp, err := validateInput(depStation, arrStation, criteria, queryParam{0, 0, ""})
+	if err != nil {
+		return nil, err //для тестів залишено; fmt.Errorf("failed validation input value: %w", err)
+	}
+	if qp.IsEmpty() {
+		return nil, errors.New("not valid input parameters")
 	}
 
 	trains, err := parseJSON()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed parsing json: %w", err)
 	}
 
 	for _, train := range trains {
-		if (train.DepartureStationID == qp.dep) && (train.ArrivalStationID == qp.arr) {
+		if (train.DepartureStationID == qp.departureStation) && (train.ArrivalStationID == qp.arrivalStation) {
 			searchedTrains = append(searchedTrains, train)
 		}
+	}
+
+	switch qp.sorting {
+	case sortPrice:
+		sort.SliceStable(searchedTrains, searchedTrains.PriceAsc)
+	case sortArrTime:
+		sort.SliceStable(searchedTrains, searchedTrains.ArrivalTimeAsc)
+	case sortDepTime:
+		sort.SliceStable(searchedTrains, searchedTrains.DepartureTimeAsc)
 	}
 
 	if len(searchedTrains) == 0 {
 		return nil, nil
 	}
-
-	switch qp.sort {
-	case "price":
-		sort.SliceStable(searchedTrains, searchedTrains.PriceAsc)
-	case "arrival-time":
-		sort.SliceStable(searchedTrains, searchedTrains.ArrivalTimeAsc)
-	case "departure-time":
-		sort.SliceStable(searchedTrains, searchedTrains.DepartureTimeAsc)
-	}
-
-	for i := 0; i < 3; i++ {
-		train := searchedTrains[i]
-		if train.IsEmpty() {
-			continue
-		}
-		result = append(result, train)
+	if len(searchedTrains) >= resultCounter {
+		return searchedTrains[:resultCounter], nil
 	}
 
 	return result, nil // маєте повернути правильні значення
