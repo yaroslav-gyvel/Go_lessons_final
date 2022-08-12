@@ -153,6 +153,7 @@ func parseJSON() (Trains, error) {
 			if !ok {
 				return nil, fmt.Errorf("failed casting value arrivalTime: %w", err)
 			}
+
 			tArr, err := time.Parse(hhmmss, timeArr)
 			if err != nil {
 				return nil, fmt.Errorf("failed parsing value arrivalTime: %w", err)
@@ -163,6 +164,7 @@ func parseJSON() (Trains, error) {
 			if !ok {
 				return nil, fmt.Errorf("failed casting value departureTime: %w", err)
 			}
+
 			tDep, err := time.Parse(hhmmss, timeDep)
 			if err != nil {
 				return nil, fmt.Errorf("failed parsing value departureTime: %w", err)
