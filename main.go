@@ -25,16 +25,18 @@ var emptyDepStationErr = errors.New("empty departure station")
 var emptyArrStationErr = errors.New("empty arrival station")
 var badDepStationErr = errors.New("bad departure station input")
 var badArrStationErr = errors.New("bad arrival station input")
-var unsuportCriteriaErr = errors.New("unsupported criteria")
+var nonsupportCriteriaErr = errors.New("unsupported criteria")
 
 type Trains []Train
 
 func (t Trains) PriceAsc(i, j int) bool {
 	return t[i].Price < t[j].Price
 }
+
 func (t Trains) ArrivalTimeAsc(i, j int) bool {
 	return t[i].ArrivalTime.Before(t[j].ArrivalTime)
 }
+
 func (t Trains) DepartureTimeAsc(i, j int) bool {
 	return t[i].DepartureTime.Before(t[j].DepartureTime)
 }
@@ -58,7 +60,6 @@ func (q queryParam) IsEmpty() bool {
 }
 
 func validateInput(depStation, arrStation, criteria string, qp queryParam) (queryParam, error) {
-
 	if depStation == "" {
 		return qp, emptyDepStationErr
 	}
@@ -83,7 +84,7 @@ func validateInput(depStation, arrStation, criteria string, qp queryParam) (quer
 	case sortPrice, sortArrTime, sortDepTime:
 		qp.sorting = criteria
 	default:
-		return qp, unsuportCriteriaErr
+		return qp, nonsupportCriteriaErr
 	}
 
 	return qp, nil
